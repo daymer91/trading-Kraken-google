@@ -1,0 +1,27 @@
+# Ignorar configuraciones locales y archivos del sistema
+AppData/
+.aws/
+.docker/
+.dotnet/
+.idlerc/
+.vscode/
+node_modules/
+*.log
+*.tmp
+*.ini
+*.dat
+NTUSER.*
+OneDrive/
+.ssh/
+.gitconfig
+
+# Ignorar archivos específicos del proyecto
+nombre-del-proyecto/
+package-lock.json
+clave-google-cloud.json
+
+# Ignorar archivos de Python y entornos virtuales
+*.pyc
+__pycache__/
+*.env
+activate
