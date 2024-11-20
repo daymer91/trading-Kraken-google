@@ -1,0 +1,16 @@
+runtime: python39  # Asegúrate de que sea compatible con tu código (Python 3.9)
+
+handlers:
+  - url: /.*  # Maneja todas las rutas
+    script: auto  # Asocia automáticamente con `main.py`
+
+env_variables:  # Variables de entorno necesarias
+  GOOGLE_CLOUD_PROJECT: 'trading-view-kareken'  # Tu ID de proyecto
+  DOMAIN_NAME: 'daymeralvarez783@eayessalfa1.com'
+  # Usa secretos de Google Secret Manager para mayor seguridad
+  KRAKEN_API_KEY: 'projects/trading-view-kareken/secrets/KRAKEN_API_KEY/versions/latest'
+  KRAKEN_API_SECRET: 'projects/trading-view-kareken/secrets/KRAKEN_API_SECRET/versions/latest'
+
+automatic_scaling:
+  min_idle_instances: 1  # Mantén al menos 1 instancia activa
+  max_idle_instances: 2  # No más de 2 instancias activas simultáneamente
