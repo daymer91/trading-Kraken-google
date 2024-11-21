@@ -1,27 +1,41 @@
-# Ignorar configuraciones locales y archivos del sistema
-AppData/
+# Configuración del sistema y carpetas personales
 .aws/
+.boto
 .docker/
 .dotnet/
-.idlerc/
-.vscode/
-node_modules/
-*.log
-*.tmp
-*.ini
-*.dat
-NTUSER.*
-OneDrive/
-.ssh/
 .gitconfig
+.gsutil/
+.idlerc/
+.lesshst
+.ssh/
+AppData/
+Contacts/
+Desktop/
+Documents/
+Downloads/
+Favorites/
+Links/
+Music/
+OneDrive/
+Pictures/
+Saved/
+Searches/
+Videos/
 
-# Ignorar archivos específicos del proyecto
-nombre-del-proyecto/
-package-lock.json
+# Archivos temporales y de sistema
+*.DAT
+*.ini
+ntuser.*
+
+# Ignorar dependencias
+node_modules/
+
+# Archivos sensibles
+*.json
 clave-google-cloud.json
 
-# Ignorar archivos de Python y entornos virtuales
-*.pyc
-__pycache__/
-*.env
+# Otros no relacionados con el proyecto
+package-lock.json
 activate
+dir
+cd
