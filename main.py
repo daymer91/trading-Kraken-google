@@ -1,95 +1,70 @@
-import krakenex
-import talib
-import pandas as pd
-import numpy as np
-from flask import Flask, request, jsonify
 import os
+from flask import Flask, request, jsonify
+import logging
+import requests  # Para integrar con la API de Kraken o cualquier otro servicio
 
 app = Flask(__name__)
 
-# Configuración de la API de Kraken
-kraken_api = krakenex.API()
-kraken_api.api_key = os.getenv('KRAKEN_API_KEY')
-kraken_api.api_secret = os.getenv('KRAKEN_SECRET_KEY')
+# Configuración
+WEBHOOK_SECRET = os.getenv('TRADINGVIEW_WEBHOOK_SECRET', '3262dadcf9880410a9e11d6d61cffe29a19a2467820a0ef70f799b1ddbb9fa44')
+KRAKEN_API_URL = "https://api.kraken.com/0/private/Order"  # URL base de Kraken
 
-# Pares y capital predeterminado
-TRADING_PAIR = 'XXBTZUSD'
-CAPITAL = 100
-RISK_PERCENT = 0.015  # 1.5% de riesgo
+# Configurar el registro
+logging.basicConfig(level=logging.INFO)
 
-def get_data(pair, interval=15):
-    """Función para obtener datos históricos de Kraken."""
-    ohlc = kraken_api.query_public('OHLC', {'pair': pair, 'interval': interval})
-    if ohlc['error']:
-        return None
-    return pd.DataFrame(ohlc['result'][pair], columns=['time', 'open', 'high', 'low', 'close', 'vwap', 'volume', 'count'])
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    try:
+        # Leer datos de la solicitud
+        data = request.get_json()
 
-def calculate_indicators(df):
-    """Calcula los indicadores técnicos."""
-    df['ATR'] = talib.ATR(df['high'], df['low'], df['close'], timeperiod=14)
-    df['RSI'] = talib.RSI(df['close'], timeperiod=14)
-    df['ADX'] = talib.ADX(df['high'], df['low'], df['close'], timeperiod=14)
-    df['SMA_Fast'] = talib.SMA(df['close'], timeperiod=9)
-    df['SMA_Slow'] = talib.SMA(df['close'], timeperiod=21)
-    return df
+        if not data or 'secret' not in data:
+            logging.warning("Solicitud sin datos válidos.")
+            return jsonify({"error": "Invalid request"}), 400
 
-def execute_order(order_type, volume):
-    """Función para ejecutar una orden en Kraken."""
-    response = kraken_api.query_private('AddOrder', {
-        'pair': TRADING_PAIR,
-        'type': order_type,
-        'ordertype': 'market',
-        'volume': volume
-    })
-    if response.get('error'):
-        return {'success': False, 'error': response['error']}
-    return {'success': True, 'data': response['result']}
+        # Validar secreto
+        if data.get('secret') != WEBHOOK_SECRET:
+            logging.warning("Secreto inválido: %s", data.get('secret'))
+            return jsonify({"error": "Invalid secret"}), 403
 
-def check_trade_conditions(df):
-    """Verifica las condiciones de trading."""
-    last_row = df.iloc[-1]
-    long_condition = (
-        last_row['RSI'] < 65 and
-        last_row['ADX'] > 20 and
-        last_row['SMA_Fast'] > last_row['SMA_Slow']
-    )
-    short_condition = (
-        last_row['RSI'] > 35 and
-        last_row['ADX'] > 20 and
-        last_row['SMA_Fast'] < last_row['SMA_Slow']
-    )
-    return long_condition, short_condition
+        # Procesar datos de alerta
+        action = data.get('action')
+        symbol = data.get('symbol', 'unknown')
+        logging.info("Alerta recibida: Acción=%s, Símbolo=%s", action, symbol)
 
-@app.route('/execute_trade', methods=['POST'])
-def execute_trade():
-    data = request.get_json()
-    volume = data.get("volume", 0.001)
+        # Lógica de integración con Kraken (ejemplo)
+        if action in ['buy', 'sell']:
+            response = send_order_to_kraken(action, symbol)
+            return jsonify({"message": "Order sent to Kraken", "details": response}), 200
 
-    # Obtener y procesar los datos de mercado
-    df = get_data(TRADING_PAIR)
-    if df is None:
-        return jsonify({"error": "No se pudieron obtener datos de Kraken"}), 500
+        return jsonify({"message": "Webhook received"}), 200
 
-    df = calculate_indicators(df)
+    except Exception as e:
+        logging.error("Error procesando la solicitud: %s", str(e))
+        return jsonify({"error": "Internal server error"}), 500
 
-    # Verificar condiciones de trading
-    long_condition, short_condition = check_trade_conditions(df)
 
-    # Ejecutar la orden según las condiciones
-    if long_condition:
-        result = execute_order("buy", volume)
-        action = "compra"
-    elif short_condition:
-        result = execute_order("sell", volume)
-        action = "venta"
-    else:
-        return jsonify({"message": "No hay condiciones para operar"}), 400
+def send_order_to_kraken(action, symbol):
+    """Simulación de una función que envía una orden a Kraken."""
+    payload = {
+        "pair": symbol,
+        "type": action,
+        "ordertype": "market",
+        "volume": "0.01"  # Ejemplo de volumen
+    }
+    headers = {
+        "API-Key": os.getenv('KRAKEN_API_KEY', ''),
+        "API-Sign": os.getenv('KRAKEN_API_SECRET', '')
+    }
+    try:
+        # Enviar solicitud simulada
+        response = requests.post(KRAKEN_API_URL, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logging.error("Error enviando orden a Kraken: %s", str(e))
+        return {"error": str(e)}
 
-    # Respuesta en función del resultado de la orden
-    if result['success']:
-        return jsonify({"success": True, "message": f"Orden de {action} ejecutada", "data": result['data']}), 200
-    else:
-        return jsonify({"success": False, "error": result['error']}), 500
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000, debug=True)
