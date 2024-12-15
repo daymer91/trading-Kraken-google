@@ -1,15 +1,46 @@
-# Configuración del sistema y carpetas personales
+# Ignorar archivos sensibles
+.env
+~.awscredentials
+clave-google-cloud.json
+
+# Ignorar cachés y archivos compilados de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignorar archivos de logs
+*.log
+
+# Ignorar configuraciones locales de IDEs
+.vscode/
+.idea/
+
+# Ignorar carpetas generadas automáticamente
+node_modules/
+dist/
+build/
+
+# Ignorar archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Ignorar configuraciones de Git locales
+.git/
+*.lock
+
+# Ignorar configuraciones temporales del entorno
+*.tmp
+*.envrc
+
+# Ignorar configuraciones de servicios
 .aws/
 .boto
 .docker/
 .dotnet/
-.gitconfig
-.gsutil/
-.idlerc/
-.lesshst
-.ssh/
+.gcloud/
+
+# Ignorar archivos y directorios innecesarios
 AppData/
-Contacts/
 Desktop/
 Documents/
 Downloads/
@@ -18,24 +49,7 @@ Links/
 Music/
 OneDrive/
 Pictures/
-Saved/
+Saved Games/
 Searches/
 Videos/
-
-# Archivos temporales y de sistema
-*.DAT
-*.ini
-ntuser.*
-
-# Ignorar dependencias
-node_modules/
-
-# Archivos sensibles
-*.json
-clave-google-cloud.json
-
-# Otros no relacionados con el proyecto
-package-lock.json
-activate
-dir
-cd
+".env\n~.awscredentials\nclave-google-cloud.json" 

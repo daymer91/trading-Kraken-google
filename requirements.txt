@@ -1,21 +1,5 @@
-# Framework principal
-Flask>=2.2,<3.0   # Framework para API y servidor web
-
-# Interacción con la API de Kraken
-krakenex>=2.1,<3.0  # Cliente ligero para la API de Kraken
-# O puedes usar:
-# ccxt>=1.94,<2.0  # Cliente unificado para múltiples intercambios, incluido Kraken
-
-pykrakenapi>=0.3.2,<0.4  # Herramientas avanzadas para Kraken (opcional)
-
-# Cálculos y manejo de datos
-pandas>=1.5,<2.0   # Manejo de datos tabulares
-numpy>=1.23,<2.0   # Operaciones numéricas
-TA-Lib>=0.4,<0.5   # Indicadores técnicos para trading
-
-# Despliegue en producción (opcional)
-gunicorn>=20.0,<21.0  # Servidor WSGI para producción
-google-cloud-functions>=1.0,<2.0  # Para integraciones con Google Cloud (opcional)
-
-# Logging estructurado (opcional)
-structlog>=22.0,<23.0  # Para mejorar los logs de tu aplicación
+Flask==3.1.0
+krakenex==2.1.0
+gunicorn==23.0.0
+python-dotenv==1.0.1
+pykrakenapi==0.3.2
