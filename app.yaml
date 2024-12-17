@@ -1,7 +1,0 @@
-runtime: python39
-entrypoint: gunicorn -b :$PORT main:app
-
-env_variables:
-  KRAKEN_API_KEY: "5BR049jMzfuhNvE22c9MRLOyVa+NlJr3UpXqe5S5Zfa/iHoQU0yy6oHk"
-  KRAKEN_API_SECRET: "GdSwhCGsHk9YnQ73NMkZlRnZiKnqyZV3iSgi1BEf5Tv1I91ely3fdgbr"
-  TRADINGVIEW_WEBHOOK_SECRET: "EWfaLc9hqU6E3KY51V/ItybGXcirQ3mE9wgGzjNnyqpo6ZfnJx9xrGXX+qGmYKznARpV3mgGzWpVFRyJUoEKhQ=="

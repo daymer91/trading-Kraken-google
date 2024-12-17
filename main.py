@@ -1,141 +1,127 @@
 import os
 import time
-import hashlib
 import hmac
+import hashlib
 import base64
-import requests
 import urllib.parse
+
 from flask import Flask, request, jsonify
-import logging
-from dotenv import load_dotenv
-from apscheduler.schedulers.background import BackgroundScheduler
+import requests
 
-# Cargar variables de entorno
-load_dotenv()
-
-# Inicialización de Flask
 app = Flask(__name__)
 
-# Configuración de los logs
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# ------------------------------------------------------------------------------
+# Configuración: Cargar tus credenciales de Kraken desde variables de entorno
+# ------------------------------------------------------------------------------
+KRAKEN_API_KEY = os.getenv('KRAKEN_API_KEY', 'TU_API_KEY_PUBLICA')
+KRAKEN_API_SECRET = os.getenv('KRAKEN_API_SECRET', 'TU_API_KEY_PRIVADA_BASE64')
 
-# Claves API y configuración del webhook
-TRADINGVIEW_WEBHOOK_SECRET = os.getenv("TRADINGVIEW_WEBHOOK_SECRET", "3262dadcf9880410a9e11d6d61cffe29a19a2467820a0ef70f799b1ddbb9fa44")
-KRAKEN_API_KEY = os.getenv("KRAKEN_API_KEY", "tu_api_key_de_kraken")
-KRAKEN_API_SECRET = os.getenv("KRAKEN_API_SECRET", "tu_api_secret_de_kraken")
+# Endpoint base de Kraken y ruta para AddOrder
+KRAKEN_API_BASE_URL = "https://api.kraken.com"
+KRAKEN_ADD_ORDER_PATH = "/0/private/AddOrder"
+KRAKEN_ADD_ORDER_URL = KRAKEN_API_BASE_URL + KRAKEN_ADD_ORDER_PATH
 
-@app.route('/', methods=['GET'])
-def home():
-    return "Servidor Flask activo.", 200
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    try:
-        # Validar que los datos son JSON
-        data = request.get_json()
-        if data is None:
-            app.logger.warning("Solicitud sin JSON recibida.")
-            return jsonify({"error": "No JSON received"}), 400
+def kraken_signature(url_path: str, data: dict, secret: str) -> str:
+    """
+    Genera la firma HMAC-SHA512 para Kraken (API-Sign).
+    Documentación oficial: https://docs.kraken.com/rest/#section/Authentication
+    """
+    # 1. Combine nonce + POST data
+    postdata = urllib.parse.urlencode(data)
+    encoded = (str(data['nonce']) + postdata).encode('utf-8')
+    
+    # 2. SHA256 del string anterior
+    message = url_path.encode('utf-8') + hashlib.sha256(encoded).digest()
+    
+    # 3. Decodificar la secret key desde base64
+    secret_decoded = base64.b64decode(secret)
+    
+    # 4. Generar la firma HMAC-SHA512
+    mac = hmac.new(secret_decoded, message, hashlib.sha512)
+    sigdigest = base64.b64encode(mac.digest())
+    return sigdigest.decode()
 
-        # Validar el secreto
-        secret = data.get("secret")
-        if secret != TRADINGVIEW_WEBHOOK_SECRET:
-            app.logger.warning(f"Secreto inválido: {secret}")
-            return jsonify({"error": "Invalid secret"}), 403
 
-        # Leer acción y símbolo del payload
-        action = data.get("action")
-        symbol = data.get("symbol")
+@app.route('/place_order', methods=['POST'])
+def place_order():
+    """
+    Endpoint Flask que recibe parámetros de la orden y la envía al endpoint AddOrder de Kraken.
+    """
+    # ------------------------------------------------------------------------------
+    # 1. Recibir datos del cliente o de la lógica interna
+    # ------------------------------------------------------------------------------
+    req_data = request.json
+    if not req_data:
+        return jsonify({"error": "Falta cuerpo JSON con parámetros de orden"}), 400
 
-        if not action or not symbol:
-            app.logger.warning("Datos incompletos en el payload del webhook.")
-            return jsonify({"error": "Incomplete data"}), 400
+    pair = req_data.get("pair", "XBTUSD")
+    ordertype = req_data.get("ordertype", "limit")
+    order_side = req_data.get("type", "buy")  # 'buy' o 'sell'
+    price = req_data.get("price", "37500")
+    volume = req_data.get("volume", "1.0")
 
-        app.logger.info(f"Webhook recibido: acción={action}, símbolo={symbol}")
-
-        # Procesar la orden si la acción es válida
-        if action == "buy" and symbol == "BTCUSD":
-            app.logger.info("Realizando una orden de compra de BTC/USD.")
-            response = realizar_orden_kraken("buy", "XBTUSD", 0.01)
-            if "error" in response and response["error"]:
-                app.logger.error(f"Error de Kraken: {response['error']}")
-                return jsonify({"error": response["error"]}), 500
-            return jsonify({"status": "order placed", "response": response}), 200
-
-        if action == "sell" and symbol == "BTCUSD":
-            app.logger.info("Realizando una orden de venta de BTC/USD.")
-            response = realizar_orden_kraken("sell", "XBTUSD", 0.01)
-            if "error" in response and response["error"]:
-                app.logger.error(f"Error de Kraken: {response['error']}")
-                return jsonify({"error": response["error"]}), 500
-            return jsonify({"status": "order placed", "response": response}), 200
-
-        app.logger.info("Solicitud procesada correctamente.")
-        return jsonify({"status": "received"}), 200
-
-    except Exception as e:
-        app.logger.error(f"Error procesando la solicitud: {str(e)}")
-        return jsonify({"error": "Internal server error"}), 500
-
-def realizar_orden_kraken(action, pair, volume):
-    url = "https://api.kraken.com/0/private/AddOrder"
-
-    # Generar parámetros para la orden
-    params = {
-        'nonce': str(int(time.time() * 1000)),
-        'pair': pair,
-        'type': action,
-        'ordertype': 'market',
-        'volume': str(volume)
+    # ------------------------------------------------------------------------------
+    # 2. Construir payload para Kraken (necesario para AddOrder)
+    # ------------------------------------------------------------------------------
+    nonce = str(int(time.time() * 1000))  # nonce en milisegundos
+    
+    payload = {
+        "nonce": nonce,
+        "ordertype": ordertype,
+        "type": order_side,
+        "pair": pair,
+        "volume": volume
+        # Puedes añadir flags opcionales como "validate": "true" para probar
     }
 
-    # Crear la firma
-    post_data = urllib.parse.urlencode(params).encode()
-    path = "/0/private/AddOrder"
-    message = (str(params['nonce']) + post_data.decode()).encode()
-    secret = base64.b64decode(KRAKEN_API_SECRET)
-    signature = hmac.new(secret, hashlib.sha512, path.encode() + message, hashlib.sha512).digest()
+    # Si la orden es de tipo limit, stop-loss-limit, take-profit-limit, etc. agregamos "price"
+    if ordertype in ["limit", "stop-loss-limit", "take-profit-limit", "trailing-stop-limit", "iceberg"]:
+        payload["price"] = price
 
+    # ------------------------------------------------------------------------------
+    # 3. Generar firma (API-Sign)
+    # ------------------------------------------------------------------------------
+    api_sign = kraken_signature(KRAKEN_ADD_ORDER_PATH, payload, KRAKEN_API_SECRET)
+
+    # ------------------------------------------------------------------------------
+    # 4. Configurar encabezados e enviar la petición POST
+    # ------------------------------------------------------------------------------
     headers = {
-        'API-Key': KRAKEN_API_KEY,
-        'API-Sign': base64.b64encode(signature).decode()
+        "API-Key": KRAKEN_API_KEY,
+        "API-Sign": api_sign,
+        "Content-Type": "application/x-www-form-urlencoded"
     }
 
+    encoded_payload = urllib.parse.urlencode(payload)
+
     try:
-        # Hacer la solicitud a Kraken
-        response = requests.post(url, data=params, headers=headers, timeout=10)
+        response = requests.post(KRAKEN_ADD_ORDER_URL, headers=headers, data=encoded_payload, timeout=10)
         response.raise_for_status()
-        response_data = response.json()
-        if response_data.get("error"):
-            app.logger.error(f"Errores de Kraken: {response_data['error']}")
-        return response_data
+    except requests.exceptions.HTTPError as e:
+        return jsonify({"error": f"HTTP error: {str(e)}", "detail": response.text}), response.status_code
     except requests.exceptions.RequestException as e:
-        app.logger.error(f"Error en la solicitud a Kraken: {str(e)}")
-        return {"error": str(e)}
+        return jsonify({"error": f"Request error: {str(e)}"}), 500
 
-def obtener_precio_actual(pair):
-    url = "https://api.kraken.com/0/public/Ticker"
-    params = {'pair': pair}
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        precio_actual = data['result'][pair]['c'][0]  # Precio actual
-        return float(precio_actual)
-    except requests.exceptions.RequestException as e:
-        app.logger.error(f"Error obteniendo precio de Kraken: {str(e)}")
-        return None
+    # ------------------------------------------------------------------------------
+    # 5. Interpretar la respuesta de Kraken
+    # ------------------------------------------------------------------------------
+    kraken_json = response.json()
+    
+    if kraken_json.get("error"):
+        # Si hay errores de Kraken, normalmente vienen en la lista "error".
+        return jsonify({
+            "error": kraken_json["error"],
+            "result": kraken_json.get("result", {})
+        }), 400
 
-def monitorear_mercado():
-    precio_actual = obtener_precio_actual("XBTUSD")
-    if precio_actual:
-        app.logger.info(f"Precio actual de XBT/USD: {precio_actual}")
-        # Aquí puedes agregar lógica para ejecutar órdenes basadas en estrategias.
+    # Éxito: devolvemos lo que envía Kraken.
+    return jsonify({
+        "error": kraken_json["error"],   # debería ser una lista vacía si fue exitoso
+        "result": kraken_json["result"]
+    }), 200
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(monitorear_mercado, 'interval', minutes=1)
-scheduler.start()
 
 if __name__ == '__main__':
-    from waitress import serve
-    serve(app, host="0.0.0.0", port=8080)
+    # Ejecuta la app Flask en modo debug, en el puerto 5000
+    app.run(debug=True, port=5000)

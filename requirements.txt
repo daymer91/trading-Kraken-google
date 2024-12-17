@@ -1,5 +1,5 @@
-Flask==3.1.0
-krakenex==2.1.0
-gunicorn==23.0.0
-python-dotenv==1.0.1
-pykrakenapi==0.3.2
+Flask
+apscheduler
+python-dotenv
+requests
+waitress

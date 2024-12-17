@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Configuración
-const WEBHOOK_SECRET = process.env.TRADINGVIEW_WEBHOOK_SECRET || "3262dadcf9880410a9e11d6d61cffe29a19a2467820a0ef70f799b1ddbb9fa44";
+const WEBHOOK_SECRET = process.env.TRADINGVIEW_WEBHOOK_SECRET || ;
 const KRAKEN_API_URL = "https://api.kraken.com/0/private/Order";
 
 // Middleware
