@@ -46,7 +46,12 @@ Videos/
 .docker/
 .dotnet/
 .gcloud/
+.ssh/
 
 # Ignorar archivos específicos
 *.ini
 *.DAT*
+*.json
+
+# Ignorar archivos de npm
+package-lock.json
