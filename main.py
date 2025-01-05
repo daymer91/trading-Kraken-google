@@ -1,127 +1,163 @@
-import os
-import time
-import hmac
+import flask
+from flask import request, jsonify
 import hashlib
+import hmac
 import base64
-import urllib.parse
-
-from flask import Flask, request, jsonify
+import time
 import requests
+import logging
+from dotenv import load_dotenv
+import os
+import asyncio
 
-app = Flask(__name__)
+# Cargar variables de entorno
+load_dotenv()
 
-# ------------------------------------------------------------------------------
-# Configuración: Cargar tus credenciales de Kraken desde variables de entorno
-# ------------------------------------------------------------------------------
-KRAKEN_API_KEY = os.getenv('KRAKEN_API_KEY', 'TU_API_KEY_PUBLICA')
-KRAKEN_API_SECRET = os.getenv('KRAKEN_API_SECRET', 'TU_API_KEY_PRIVADA_BASE64')
+app = flask.Flask("main")
 
-# Endpoint base de Kraken y ruta para AddOrder
-KRAKEN_API_BASE_URL = "https://api.kraken.com"
-KRAKEN_ADD_ORDER_PATH = "/0/private/AddOrder"
-KRAKEN_ADD_ORDER_URL = KRAKEN_API_BASE_URL + KRAKEN_ADD_ORDER_PATH
+# Configuración inicial
+API_KEY = os.getenv("API_KEY", "YOUR_API_KEY")
+API_SECRET = os.getenv("API_SECRET", "YOUR_API_SECRET")
+BASE_URL = "https://api.kraken.com"
+DEFAULT_PAIR = os.getenv("DEFAULT_PAIR", "XBTUSD")  # Par predeterminado
+DEFAULT_VOLUME = float(os.getenv("DEFAULT_VOLUME", 2))  # Tamaño fijo de la operación
 
+# Configurar logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='kraken_server.log', filemode='a')
+logger = logging.getLogger()
 
-def kraken_signature(url_path: str, data: dict, secret: str) -> str:
-    """
-    Genera la firma HMAC-SHA512 para Kraken (API-Sign).
-    Documentación oficial: https://docs.kraken.com/rest/#section/Authentication
-    """
-    # 1. Combine nonce + POST data
-    postdata = urllib.parse.urlencode(data)
-    encoded = (str(data['nonce']) + postdata).encode('utf-8')
-    
-    # 2. SHA256 del string anterior
-    message = url_path.encode('utf-8') + hashlib.sha256(encoded).digest()
-    
-    # 3. Decodificar la secret key desde base64
-    secret_decoded = base64.b64decode(secret)
-    
-    # 4. Generar la firma HMAC-SHA512
-    mac = hmac.new(secret_decoded, message, hashlib.sha512)
-    sigdigest = base64.b64encode(mac.digest())
-    return sigdigest.decode()
+# Métricas globales
+metrics = {
+    "orders_sent": 0,
+    "simulations": 0,
+    "errors": 0
+}
 
+# Funciones auxiliares
+def generate_signature(api_path, data, secret):
+    post_data = data.encode('utf-8')
+    message = api_path.encode('utf-8') + hashlib.sha256(post_data).digest()
+    mac = hmac.new(base64.b64decode(secret), message, hashlib.sha512)
+    return base64.b64encode(mac.digest()).decode()
 
-@app.route('/place_order', methods=['POST'])
-def place_order():
-    """
-    Endpoint Flask que recibe parámetros de la orden y la envía al endpoint AddOrder de Kraken.
-    """
-    # ------------------------------------------------------------------------------
-    # 1. Recibir datos del cliente o de la lógica interna
-    # ------------------------------------------------------------------------------
-    req_data = request.json
-    if not req_data:
-        return jsonify({"error": "Falta cuerpo JSON con parámetros de orden"}), 400
+async def send_order(order_type, volume, pair, price=None):
+    api_path = "/0/private/AddOrder"
+    url = BASE_URL + api_path
+    nonce = str(int(time.time() * 1000))
 
-    pair = req_data.get("pair", "XBTUSD")
-    ordertype = req_data.get("ordertype", "limit")
-    order_side = req_data.get("type", "buy")  # 'buy' o 'sell'
-    price = req_data.get("price", "37500")
-    volume = req_data.get("volume", "1.0")
-
-    # ------------------------------------------------------------------------------
-    # 2. Construir payload para Kraken (necesario para AddOrder)
-    # ------------------------------------------------------------------------------
-    nonce = str(int(time.time() * 1000))  # nonce en milisegundos
-    
-    payload = {
+    data = {
         "nonce": nonce,
-        "ordertype": ordertype,
-        "type": order_side,
-        "pair": pair,
-        "volume": volume
-        # Puedes añadir flags opcionales como "validate": "true" para probar
+        "ordertype": order_type,
+        "type": "buy" if order_type == "market" else "sell",
+        "volume": volume,
+        "pair": pair
     }
+    if price:
+        data["price"] = price
 
-    # Si la orden es de tipo limit, stop-loss-limit, take-profit-limit, etc. agregamos "price"
-    if ordertype in ["limit", "stop-loss-limit", "take-profit-limit", "trailing-stop-limit", "iceberg"]:
-        payload["price"] = price
-
-    # ------------------------------------------------------------------------------
-    # 3. Generar firma (API-Sign)
-    # ------------------------------------------------------------------------------
-    api_sign = kraken_signature(KRAKEN_ADD_ORDER_PATH, payload, KRAKEN_API_SECRET)
-
-    # ------------------------------------------------------------------------------
-    # 4. Configurar encabezados e enviar la petición POST
-    # ------------------------------------------------------------------------------
     headers = {
-        "API-Key": KRAKEN_API_KEY,
-        "API-Sign": api_sign,
-        "Content-Type": "application/x-www-form-urlencoded"
+        "API-Key": API_KEY,
+        "API-Sign": generate_signature(api_path, "nonce=" + nonce + "&" + "&".join([f"{k}={v}" for k, v in data.items()]), API_SECRET)
     }
-
-    encoded_payload = urllib.parse.urlencode(payload)
 
     try:
-        response = requests.post(KRAKEN_ADD_ORDER_URL, headers=headers, data=encoded_payload, timeout=10)
+        response = requests.post(url, headers=headers, data=data)
         response.raise_for_status()
-    except requests.exceptions.HTTPError as e:
-        return jsonify({"error": f"HTTP error: {str(e)}", "detail": response.text}), response.status_code
+        metrics["orders_sent"] += 1
+        logger.info(f"Order sent successfully: {response.json()}")
+        return response.json()
     except requests.exceptions.RequestException as e:
-        return jsonify({"error": f"Request error: {str(e)}"}), 500
+        metrics["errors"] += 1
+        logger.error(f"Error sending order: {e}")
+        return {"error": str(e)}
 
-    # ------------------------------------------------------------------------------
-    # 5. Interpretar la respuesta de Kraken
-    # ------------------------------------------------------------------------------
-    kraken_json = response.json()
-    
-    if kraken_json.get("error"):
-        # Si hay errores de Kraken, normalmente vienen en la lista "error".
-        return jsonify({
-            "error": kraken_json["error"],
-            "result": kraken_json.get("result", {})
-        }), 400
+# Rutas del servidor
+@app.route('/')
+def home():
+    return "¡Bienvenido al servidor de trading de Kraken!"
 
-    # Éxito: devolvemos lo que envía Kraken.
-    return jsonify({
-        "error": kraken_json["error"],   # debería ser una lista vacía si fue exitoso
-        "result": kraken_json["result"]
-    }), 200
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.get_json()
 
+    if not data:
+        metrics["errors"] += 1
+        logger.warning("No data received in webhook")
+        return jsonify({"error": "No data received"}), 400
+
+    try:
+        order_type = data.get("type")
+        entry = data.get("entry")
+        stop_loss = data.get("sl")
+        take_profit = data.get("tp")
+        volume = data.get("volume", DEFAULT_VOLUME)
+        pair = data.get("pair", DEFAULT_PAIR)
+
+        logger.info(f"Received webhook: {data}")
+
+        # Simulación para pruebas locales
+        response = {
+            "order_type": order_type,
+            "entry_price": entry,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "volume": volume,
+            "pair": pair,
+            "status": "Webhook received successfully"
+        }
+
+        return jsonify(response), 200
+
+    except Exception as e:
+        metrics["errors"] += 1
+        logger.error(f"Error processing webhook: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/test', methods=['GET'])
+def test():
+    return jsonify({"status": "Server is running"})
+
+@app.route('/simulate', methods=['POST'])
+def simulate():
+    data = request.get_json()
+
+    if not data:
+        metrics["errors"] += 1
+        logger.warning("No data received for simulation")
+        return jsonify({"error": "No data received"}), 400
+
+    try:
+        order_type = data.get("type")
+        entry = data.get("entry")
+        stop_loss = data.get("sl")
+        take_profit = data.get("tp")
+        volume = data.get("volume", DEFAULT_VOLUME)
+        pair = data.get("pair", DEFAULT_PAIR)
+
+        simulated_result = {
+            "order_type": order_type,
+            "entry_price": entry,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "volume": volume,
+            "pair": pair,
+            "status": "Simulated successfully"
+        }
+
+        metrics["simulations"] += 1
+        logger.info(f"Simulation result: {simulated_result}")
+        return jsonify(simulated_result)
+
+    except Exception as e:
+        metrics["errors"] += 1
+        logger.error(f"Error during simulation: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/metrics', methods=['GET'])
+def get_metrics():
+    return jsonify(metrics)
 
 if __name__ == '__main__':
-    # Ejecuta la app Flask en modo debug, en el puerto 5000
-    app.run(debug=True, port=5000)
+    with app.test_request_context():
+        print(app.url_map)
+    app.run(debug=True, host='0.0.0.0', port=5000)

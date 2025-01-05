@@ -1,0 +1,15 @@
+runtime: python39  # Especifica que la aplicación usará Python 3.9
+
+entrypoint: gunicorn -b :$PORT app:app  # Inicia la aplicación con Gunicorn
+
+env_variables:
+  API_KEY: "your_api_key"  # Clave de API (configurada en tus variables de entorno)
+  API_SECRET: "your_api_secret"  # Clave secreta de la API (configurada en tus variables de entorno)
+  DEFAULT_PAIR: "XBTUSD"  # Par de divisas predeterminado
+  DEFAULT_VOLUME: "2"  # Tamaño predeterminado de la operación
+
+# Este archivo también podría incluir un 'automatic_scaling' si se requieren ajustes específicos
+# automatic_scaling:
+#   target_cpu_utilization: 0.65
+#   min_instances: 1
+#   max_instances: 10
