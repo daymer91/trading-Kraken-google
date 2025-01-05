@@ -1,6 +1,6 @@
-# Ignorar archivos sensibles
-.env               # Archivo de variables de entorno
-~.awscredentials   # Ejemplo de credenciales AWS
+# Configuración sensible
+.env
+~.awscredentials
 clave-google-cloud.json
 
 # Ignorar cachés y archivos compilados de Python
@@ -23,6 +23,18 @@ build/
 # Ignorar archivos del sistema operativo
 .DS_Store
 Thumbs.db
+AppData/
+Contacts/
+Desktop/
+Documents/
+Downloads/
+Favorites/
+Music/
+OneDrive/
+Pictures/
+Saved Games/
+Searches/
+Videos/
 
 # Ignorar configuraciones temporales del entorno
 *.tmp
@@ -34,3 +46,7 @@ Thumbs.db
 .docker/
 .dotnet/
 .gcloud/
+
+# Ignorar archivos específicos
+*.ini
+*.DAT*
